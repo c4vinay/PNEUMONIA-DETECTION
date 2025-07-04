@@ -1,0 +1,90 @@
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import cv2
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+# Define the dataset path
+data_dir = "chest_xray/train"
+
+# Load one normal and one pneumonia image for preview
+normal_img = cv2.imread(os.path.join(data_dir, "NORMAL", os.listdir(os.path.join(data_dir, "NORMAL"))[0]), cv2.IMREAD_GRAYSCALE)
+pneumonia_img = cv2.imread(os.path.join(data_dir, "PNEUMONIA", os.listdir(os.path.join(data_dir, "PNEUMONIA"))[0]), cv2.IMREAD_GRAYSCALE)
+
+# Display the images
+plt.figure(figsize=(8, 4))
+plt.subplot(1, 2, 1)
+plt.imshow(normal_img, cmap='gray')
+plt.title("Normal X-ray")
+plt.subplot(1, 2, 2)
+plt.imshow(pneumonia_img, cmap='gray')
+plt.title("Pneumonia X-ray")
+plt.show()
+# Image preprocessing
+train_datagen = ImageDataGenerator(rescale=1./255, zoom_range=0.2, shear_range=0.2, horizontal_flip=True)
+val_datagen = ImageDataGenerator(rescale=1./255)
+
+train_generator = train_datagen.flow_from_directory(
+    "chest_xray/train",
+    target_size=(224, 224),
+    batch_size=32,
+    class_mode='binary'
+)
+
+val_generator = val_datagen.flow_from_directory(
+    "chest_xray/val",
+    target_size=(224, 224),
+    batch_size=32,
+    class_mode='binary'
+)
+from tensorflow.keras import Input
+
+# Build CNN Model
+model = Sequential([
+    Input(shape=(224, 224, 3)),  # Explicitly define input shape here
+    Conv2D(32, (3,3), activation='relu'),
+    MaxPooling2D(2,2),
+    Conv2D(64, (3,3), activation='relu'),
+    MaxPooling2D(2,2),
+    Flatten(),
+    Dense(128, activation='relu'),
+    Dropout(0.5),
+    Dense(1, activation='sigmoid')  # Binary classification
+])
+
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+history = model.fit(train_generator, validation_data=val_generator, epochs=5)
+
+  test_datagen = ImageDataGenerator(rescale=1./255)
+test_generator = test_datagen.flow_from_directory(
+    "chest_xray/test",
+    target_size=(224, 224),
+    batch_size=32,
+    class_mode='binary'
+)
+
+# Evaluate model
+loss, accuracy = model.evaluate(test_generator)
+print(f"Test Accuracy: {accuracy:.2f}")
+
+model.save("pneumonia_model.keras")  # Saves in the recommended format
+print("Model saved successfully!")
+
+def predict_image(image_path):
+    img = cv2.imread(image_path)
+    img = cv2.resize(img, (224, 224))
+    img = img / 255.0  # Normalize
+    img = np.expand_dims(img, axis=0)  # Add batch dimension
+    
+    prediction = model.predict(img)
+    if prediction[0][0] > 0.5:
+        print("Prediction: Pneumonia Detected")
+    else:
+        print("Prediction: Normal X-ray")
+
+# Test with a sample image
+predict_image(r"chest_xray\train\PNEUMONIA\person1_bacteria_2.jpeg")
+
